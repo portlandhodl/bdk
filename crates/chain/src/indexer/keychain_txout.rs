@@ -128,6 +128,7 @@ pub struct KeychainTxOutIndex<K> {
     descriptors: HashMap<DescriptorId, Descriptor<DescriptorPublicKey>>,
     last_revealed: HashMap<DescriptorId, u32>,
     lookahead: u32,
+    replenish_cache: BTreeMap<u32, ScriptBuf>,
 }
 
 impl<K> Default for KeychainTxOutIndex<K> {
@@ -198,6 +199,7 @@ impl<K> KeychainTxOutIndex<K> {
             descriptor_id_to_keychain: Default::default(),
             last_revealed: Default::default(),
             lookahead,
+            replenish_cache: Default::default(),
         }
     }
 }
@@ -434,6 +436,7 @@ impl<K: Clone + Ord + Debug> KeychainTxOutIndex<K> {
     }
 
     /// Syncs the state of the inner spk index after changes to a keychain
+    /// Will utilize the replenish cache if availble to bypass the derivation burden existing derived spks
     fn replenish_inner_index(&mut self, did: DescriptorId, keychain: &K, lookahead: u32) {
         let descriptor = self.descriptors.get(&did).expect("invariant");
         let next_store_index = self
@@ -442,14 +445,35 @@ impl<K: Clone + Ord + Debug> KeychainTxOutIndex<K> {
             .range(&(keychain.clone(), u32::MIN)..=&(keychain.clone(), u32::MAX))
             .last()
             .map_or(0, |((_, index), _)| *index + 1);
+
         let next_reveal_index = self.last_revealed.get(&did).map_or(0, |v| *v + 1);
-        for (new_index, new_spk) in
-            SpkIterator::new_with_range(descriptor, next_store_index..next_reveal_index + lookahead)
-        {
-            let _inserted = self
-                .inner
-                .insert_spk((keychain.clone(), new_index), new_spk);
-            debug_assert!(_inserted, "replenish lookahead: must not have existing spk: keychain={:?}, lookahead={}, next_store_index={}, next_reveal_index={}", keychain, lookahead, next_store_index, next_reveal_index);
+        let spk_idx_end = next_reveal_index + lookahead;
+        let mut missing_ranges: Vec<(u32,u32)> = Vec::new();
+        let mut current = next_store_index;
+
+        let keys_in_range =self.replenish_cache.range(next_store_index..=spk_idx_end).map(|(&k, _)| k);
+        for key in keys_in_range {
+            if current < key {
+                missing_ranges.push((current, key - 1));
+            } else {
+                let spk = self.replenish_cache.get(&current).expect("Infallable memory access to spks cache BTree key.");
+                self.inner.insert_spk((keychain.clone(), current), spk.clone());
+            }
+            current = key + 1;
+        }
+
+        if current <= spk_idx_end {
+            missing_ranges.push((current, spk_idx_end));
+        }
+
+        for (s,e) in missing_ranges {
+            // Process all of the missing keys in the desired ranges spks to load.
+            for (new_index, new_spk) in SpkIterator::new_with_range(descriptor, s..=e) {
+                let _inserted = self
+                    .inner
+                    .insert_spk((keychain.clone(), new_index), new_spk);
+                debug_assert!(_inserted, "replenish lookahead: must not have existing spk: keychain={:?}, lookahead={}, next_store_index={}, next_reveal_index={}", keychain, lookahead, next_store_index, next_reveal_index);
+            }
         }
     }
 
