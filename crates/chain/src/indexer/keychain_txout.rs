@@ -441,8 +441,6 @@ impl<K: Clone + Ord + Debug> KeychainTxOutIndex<K> {
     /// Syncs the state of the inner spk index after changes to a keychain
     /// Will utilize the replenish cache if availble to bypass the derivation burden existing derived spks
     fn replenish_inner_index(&mut self, did: DescriptorId, keychain: &K, lookahead: u32) {
-        let revealed_spks= self.inner.all_spks();
-        println!("Table of revealed spks is {:?}", revealed_spks);
         let descriptor = self.descriptors.get(&did).expect("invariant");
         let next_store_index = self
             .inner
@@ -480,6 +478,9 @@ impl<K: Clone + Ord + Debug> KeychainTxOutIndex<K> {
                 debug_assert!(_inserted, "replenish lookahead: must not have existing spk: keychain={:?}, lookahead={}, next_store_index={}, next_reveal_index={}", keychain, lookahead, next_store_index, next_reveal_index);
             }
         }
+
+        let revealed_spks= self.inner.all_spks();
+        println!("Table of revealed spks is {:?}", revealed_spks);
     }
 
     /// Get an unbounded spk iterator over a given `keychain`. Returns `None` if the provided
