@@ -142,6 +142,7 @@ impl<K: Clone + Ord + Debug> Indexer for KeychainTxOutIndex<K> {
 
     fn index_txout(&mut self, outpoint: OutPoint, txout: &TxOut) -> Self::ChangeSet {
         let mut changeset = ChangeSet::default();
+        changeset.spk_cache = self.spk_cache.clone();
         if let Some((keychain, index)) = self.inner.scan_txout(outpoint, txout).cloned() {
             let did = self
                 .keychain_to_descriptor_id
@@ -153,6 +154,7 @@ impl<K: Clone + Ord + Debug> Indexer for KeychainTxOutIndex<K> {
                 self.replenish_inner_index(*did, &keychain, self.lookahead);
             }
         }
+
         changeset
     }
 
@@ -168,7 +170,7 @@ impl<K: Clone + Ord + Debug> Indexer for KeychainTxOutIndex<K> {
     fn initial_changeset(&self) -> Self::ChangeSet {
         ChangeSet {
             last_revealed: self.last_revealed.clone().into_iter().collect(),
-            revealed_spks: self.spk_cache.clone(),
+            spk_cache: self.spk_cache.clone(),
         }
     }
 
@@ -871,7 +873,7 @@ pub struct ChangeSet {
     /// Contains for each descriptor_id the last revealed index of derivation
     pub last_revealed: BTreeMap<DescriptorId, u32>,
     /// Contains for each descirptor_id and optional set of spk(s) that have been derived
-    pub revealed_spks: BTreeMap<(DescriptorId, u32), ScriptBuf>,
+    pub spk_cache: BTreeMap<(DescriptorId, u32), ScriptBuf>,
 }
 
 impl Merge for ChangeSet {

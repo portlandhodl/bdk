@@ -80,7 +80,7 @@ fn insert_relevant_txs() {
         },
         indexer: keychain_txout::ChangeSet {
             last_revealed: [(descriptor.descriptor_id(), 9_u32)].into(),
-            revealed_spks: Default::default(),
+            spk_cache: Default::default(),
         },
     };
 
@@ -94,7 +94,7 @@ fn insert_relevant_txs() {
         tx_graph: changeset.tx_graph,
         indexer: keychain_txout::ChangeSet {
             last_revealed: changeset.indexer.last_revealed,
-            revealed_spks: Default::default(),
+            spk_cache: Default::default(),
         },
     };
 
