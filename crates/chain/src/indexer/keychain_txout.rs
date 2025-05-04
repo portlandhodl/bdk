@@ -166,8 +166,11 @@ impl<K: Clone + Ord + Debug> Indexer for KeychainTxOutIndex<K> {
     }
 
     fn initial_changeset(&self) -> Self::ChangeSet {
+        let revealed_spks= self.inner.all_spks();
+        println!("Table of revealed spks is {:?}", revealed_spks);
         ChangeSet {
             last_revealed: self.last_revealed.clone().into_iter().collect(),
+            revealed_spks: Default::default(),
         }
     }
 
@@ -865,6 +868,8 @@ impl<K: core::fmt::Debug> std::error::Error for InsertDescriptorError<K> {}
 pub struct ChangeSet {
     /// Contains for each descriptor_id the last revealed index of derivation
     pub last_revealed: BTreeMap<DescriptorId, u32>,
+    /// Contains for each descirptor_id and optional set of spk(s) that have been derived
+    pub revealed_spks: BTreeMap<DescriptorId, BTreeMap<u32, ScriptBuf>>,
 }
 
 impl Merge for ChangeSet {

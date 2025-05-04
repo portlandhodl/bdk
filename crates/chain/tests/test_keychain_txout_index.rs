@@ -81,9 +81,11 @@ fn merge_changesets_check_last_revealed() {
 
     let mut lhs = ChangeSet {
         last_revealed: lhs_di,
+        revealed_spks: Default::default(),
     };
     let rhs = ChangeSet {
         last_revealed: rhs_di,
+        revealed_spks: Default::default(),
     };
     lhs.merge(rhs);
 
@@ -113,7 +115,8 @@ fn test_set_all_derivation_indices() {
     assert_eq!(
         txout_index.reveal_to_target_multi(&derive_to),
         ChangeSet {
-            last_revealed: last_revealed.clone()
+            last_revealed: last_revealed.clone(),
+            revealed_spks: Default::default(),
         }
     );
     assert_eq!(txout_index.last_revealed_indices(), derive_to);
@@ -606,9 +609,11 @@ fn applying_changesets_one_by_one_vs_aggregate_must_have_same_result() {
     let changesets: &[ChangeSet] = &[
         ChangeSet {
             last_revealed: [(desc.descriptor_id(), 10)].into(),
+            revealed_spks: Default::default(),
         },
         ChangeSet {
             last_revealed: [(desc.descriptor_id(), 12)].into(),
+            revealed_spks: Default::default(),
         },
     ];
 
