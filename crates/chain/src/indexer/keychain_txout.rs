@@ -127,8 +127,8 @@ pub struct KeychainTxOutIndex<K> {
     descriptor_id_to_keychain: HashMap<DescriptorId, K>,
     descriptors: HashMap<DescriptorId, Descriptor<DescriptorPublicKey>>,
     last_revealed: HashMap<DescriptorId, u32>,
+    spk_cache: BTreeMap<(DescriptorId, u32), ScriptBuf>,
     lookahead: u32,
-    replenish_cache: BTreeMap<u32, ScriptBuf>,
 }
 
 impl<K> Default for KeychainTxOutIndex<K> {
@@ -166,17 +166,9 @@ impl<K: Clone + Ord + Debug> Indexer for KeychainTxOutIndex<K> {
     }
 
     fn initial_changeset(&self) -> Self::ChangeSet {
-        let mut revealed_spks = BTreeMap::new();
-        
-        for ((keychain, index), script) in self.inner.all_spks() {
-            if let Some(descriptor_id) = self.keychain_to_descriptor_id.get(keychain) {
-                revealed_spks.insert((*descriptor_id, *index), script.clone());
-            }
-        }
-        
         ChangeSet {
             last_revealed: self.last_revealed.clone().into_iter().collect(),
-            revealed_spks,
+            revealed_spks: Default::default(),
         }
     }
 
@@ -208,7 +200,7 @@ impl<K> KeychainTxOutIndex<K> {
             descriptor_id_to_keychain: Default::default(),
             last_revealed: Default::default(),
             lookahead,
-            replenish_cache: Default::default(),
+            spk_cache: Default::default(),
         }
     }
 }
@@ -458,21 +450,21 @@ impl<K: Clone + Ord + Debug> KeychainTxOutIndex<K> {
         let next_reveal_index = self.last_revealed.get(&did).map_or(0, |v| *v + 1);
         let spk_idx_end = next_reveal_index + lookahead;
         let mut missing_ranges: Vec<(u32,u32)> = Vec::new();
-        let mut current = next_store_index;
+        let mut current_idx = next_store_index;
 
-        let keys_in_range =self.replenish_cache.range(next_store_index..=spk_idx_end).map(|(&k, _)| k);
-        for key in keys_in_range {
-            if current < key {
-                missing_ranges.push((current, key - 1));
+        let keys_in_range = self.spk_cache.range((did, next_store_index)..=(did, spk_idx_end)).map(|(&k, _)| k);
+        for (_did, key_idx) in keys_in_range {
+            if current_idx < key_idx {
+                missing_ranges.push((current_idx, key_idx - 1));
             } else {
-                let spk = self.replenish_cache.get(&current).expect("Infallable memory access to spks cache BTree key.");
-                self.inner.insert_spk((keychain.clone(), current), spk.clone());
+                let spk = self.spk_cache.get(&(did, current_idx)).expect("Infallable memory access to spks cache BTree key.");
+                self.inner.insert_spk((keychain.clone(), current_idx), spk.clone());
             }
-            current = key + 1;
+            current_idx = key_idx + 1;
         }
 
-        if current <= spk_idx_end {
-            missing_ranges.push((current, spk_idx_end));
+        if current_idx <= spk_idx_end {
+            missing_ranges.push((current_idx, spk_idx_end));
         }
 
         for (s,e) in missing_ranges {
