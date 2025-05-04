@@ -164,6 +164,9 @@ impl<K: Clone + Ord + Debug> Indexer for KeychainTxOutIndex<K> {
         for (op, txout) in tx.output.iter().enumerate() {
             changeset.merge(self.index_txout(OutPoint::new(txid, op as u32), txout));
         }
+
+        changeset.spk_cache = self.spk_cache.clone();
+        
         changeset
     }
 
