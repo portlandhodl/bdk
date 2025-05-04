@@ -870,7 +870,7 @@ pub struct ChangeSet {
     /// Contains for each descriptor_id the last revealed index of derivation
     pub last_revealed: BTreeMap<DescriptorId, u32>,
     /// Contains for each descirptor_id and optional set of spk(s) that have been derived
-    pub revealed_spks: BTreeMap<u32, ScriptBuf>,
+    pub revealed_spks: BTreeMap<(DescriptorId, u32), ScriptBuf>,
 }
 
 impl Merge for ChangeSet {
