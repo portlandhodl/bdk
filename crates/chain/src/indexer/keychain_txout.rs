@@ -168,7 +168,7 @@ impl<K: Clone + Ord + Debug> Indexer for KeychainTxOutIndex<K> {
     fn initial_changeset(&self) -> Self::ChangeSet {
         ChangeSet {
             last_revealed: self.last_revealed.clone().into_iter().collect(),
-            revealed_spks: Default::default(),
+            revealed_spks: self.spk_cache.clone(),
         }
     }
 
