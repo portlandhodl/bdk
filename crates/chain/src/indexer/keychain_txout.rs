@@ -166,9 +166,17 @@ impl<K: Clone + Ord + Debug> Indexer for KeychainTxOutIndex<K> {
     }
 
     fn initial_changeset(&self) -> Self::ChangeSet {
+        let mut revealed_spks = BTreeMap::new();
+        
+        for ((keychain, index), script) in self.inner.all_spks() {
+            if let Some(descriptor_id) = self.keychain_to_descriptor_id.get(keychain) {
+                revealed_spks.insert((*descriptor_id, *index), script.clone());
+            }
+        }
+        
         ChangeSet {
             last_revealed: self.last_revealed.clone().into_iter().collect(),
-            revealed_spks: Default::default(),
+            revealed_spks,
         }
     }
 
@@ -476,7 +484,7 @@ impl<K: Clone + Ord + Debug> KeychainTxOutIndex<K> {
                 debug_assert!(_inserted, "replenish lookahead: must not have existing spk: keychain={:?}, lookahead={}, next_store_index={}, next_reveal_index={}", keychain, lookahead, next_store_index, next_reveal_index);
             }
         }
-        
+
         let revealed_spks = self.inner.all_spks();
         println!("Table of revealed spks is {:?}", revealed_spks);
     }
