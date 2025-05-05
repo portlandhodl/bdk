@@ -882,6 +882,10 @@ pub struct ChangeSet {
 impl Merge for ChangeSet {
     /// Merge another [`ChangeSet`] into self.
     fn merge(&mut self, other: Self) {
+        // The spk_cache should always merge all entires
+        let mut other_m = other.clone();
+        self.spk_cache.append(&mut other_m.spk_cache);
+
         // for `last_revealed`, entries of `other` will take precedence ONLY if it is greater than
         // what was originally in `self`.
         for (desc_id, index) in other.last_revealed {
