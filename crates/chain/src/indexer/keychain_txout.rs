@@ -901,7 +901,7 @@ impl Merge for ChangeSet {
 
     /// Returns whether the changeset are empty.
     fn is_empty(&self) -> bool {
-        self.last_revealed.is_empty()
+        self.last_revealed.is_empty() && self.spk_cache.is_empty()
     }
 }
 
