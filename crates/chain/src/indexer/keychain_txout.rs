@@ -405,6 +405,11 @@ impl<K: Clone + Ord + Debug> KeychainTxOutIndex<K> {
         self.descriptors.get(did)
     }
 
+    /// Get the spk_cache contents.
+    pub fn spk_cache(&self) -> BTreeMap<(DescriptorId, u32), ScriptBuf> {
+        self.spk_cache.clone()
+    }
+
     /// Get the lookahead setting.
     ///
     /// Refer to [`new`] for more information on the `lookahead`.
