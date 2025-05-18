@@ -15,6 +15,10 @@ use core::{
     fmt::Debug,
     ops::{Bound, RangeBounds},
 };
+use std::{
+    thread,
+    sync::{Arc, Mutex},
+};
 
 use crate::Merge;
 
@@ -447,7 +451,7 @@ impl<K: Clone + Ord + Debug> KeychainTxOutIndex<K> {
     }
 
     /// Syncs the state of the inner spk index after changes to a keychain
-    /// Will utilize the replenish cache if availble to bypass the derivation burden existing derived spks
+    /// Uses multithreading to parallelize the derivation of script pubkeys
     fn replenish_inner_index(&mut self, did: DescriptorId, keychain: &K, lookahead: u32) {
         let descriptor = self.descriptors.get(&did).expect("invariant");
         let next_store_index = self
@@ -456,40 +460,77 @@ impl<K: Clone + Ord + Debug> KeychainTxOutIndex<K> {
             .range(&(keychain.clone(), u32::MIN)..=&(keychain.clone(), u32::MAX))
             .last()
             .map_or(0, |((_, index), _)| *index + 1);
-
         let next_reveal_index = self.last_revealed.get(&did).map_or(0, |v| *v + 1);
-        let spk_idx_end = next_reveal_index + lookahead;
-        let mut missing_ranges: Vec<(u32,u32)> = Vec::new();
-        let mut current_idx = next_store_index;
-
-        let keys_in_range = self.spk_cache.range((did, next_store_index)..=(did, spk_idx_end)).map(|(&k, _)| k);
-        for (_did, key_idx) in keys_in_range {
-            if current_idx < key_idx {
-                missing_ranges.push((current_idx, key_idx - 1));
-            } else {
-                let spk = self.spk_cache.get(&(did, current_idx)).expect("Infallable memory access to spks cache BTree key.");
-                self.inner.insert_spk((keychain.clone(), current_idx), spk.clone());
+        let end_index = next_reveal_index + lookahead;
+        
+        // If there's nothing to process, return early
+        if next_store_index >= end_index {
+            return;
+        }
+        
+        // Get the number of CPU cores available
+        let num_cpus = thread::available_parallelism().map(|p| p.get()).unwrap_or(1);
+        
+        // Calculate chunk size for dividing work among threads
+        let total_indices = end_index - next_store_index;
+        let chunk_size = (total_indices + num_cpus as u32 - 1) / num_cpus as u32; // Ceiling division
+        
+        // Create a shared descriptor that can be moved into threads
+        let descriptor = Arc::new(descriptor.clone());
+        
+        // Create a mutex-protected collection to store the results
+        let results = Arc::new(Mutex::new(Vec::new()));
+        
+        // Create a vector to hold our thread handles
+        let mut handles = Vec::with_capacity(num_cpus);
+        
+        // Spawn threads to process chunks of the range
+        for i in 0..num_cpus {
+            let start = next_store_index + (i as u32 * chunk_size);
+            if start >= end_index {
+                break;
             }
-            current_idx = key_idx + 1;
+            
+            let end = (start + chunk_size).min(end_index);
+            let descriptor_clone = Arc::clone(&descriptor);
+            let results_clone = Arc::clone(&results);
+            
+            let handle = thread::spawn(move || {
+                let mut thread_results = Vec::new();
+                
+                // Process this chunk of indices
+                for (new_index, new_spk) in SpkIterator::new_with_range(&*descriptor_clone, start..end) {
+                    thread_results.push((new_index, new_spk));
+                }
+                
+                // Lock the shared results and append our thread's results
+                let mut results = results_clone.lock().unwrap();
+                results.extend(thread_results);
+            });
+            
+            handles.push(handle);
         }
-
-        if current_idx <= spk_idx_end {
-            missing_ranges.push((current_idx, spk_idx_end));
+        
+        // Wait for all threads to complete
+        for handle in handles {
+            handle.join().unwrap();
         }
-
-        for (s,e) in missing_ranges {
-            // Process all of the missing keys in the desired ranges spks to load.
-            for (new_index, new_spk) in SpkIterator::new_with_range(descriptor, s..=e) {
-                let _inserted = self
-                    .inner
-                    .insert_spk((keychain.clone(), new_index), new_spk.clone());
-                self.spk_cache.insert((did, new_index), new_spk);
-                debug_assert!(_inserted, "replenish lookahead: must not have existing spk: keychain={:?}, lookahead={}, next_store_index={}, next_reveal_index={}", keychain, lookahead, next_store_index, next_reveal_index);
-            }
+        
+        // Process all the results
+        let mut results = Arc::try_unwrap(results)
+            .expect("All threads should be done with the results")
+            .into_inner()
+            .unwrap();
+        
+        // Sort results by index to ensure they're processed in order
+        results.sort_by_key(|(index, _)| *index);
+            
+        for (new_index, new_spk) in results {
+            let _inserted = self
+                .inner
+                .insert_spk((keychain.clone(), new_index), new_spk);
+            debug_assert!(_inserted, "replenish lookahead: must not have existing spk: keychain={:?}, lookahead={}, next_store_index={}, next_reveal_index={}", keychain, lookahead, next_store_index, next_reveal_index);
         }
-
-        let revealed_spks = self.inner.all_spks();
-        println!("Table of revealed spks is {:?}", revealed_spks);
     }
 
     /// Get an unbounded spk iterator over a given `keychain`. Returns `None` if the provided
